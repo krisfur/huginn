@@ -53,6 +53,7 @@ State :: struct {
 	search_query:    [256]u8,
 	search_len:      int,
 	selected_index:  int,
+	scroll_offset:   int,
 	last_input_time: time.Time,
 	needs_search:    bool,
 	status_message:  string,
@@ -77,6 +78,7 @@ main :: proc() {
 		search_query    = {},
 		search_len      = 0,
 		selected_index  = 0,
+		scroll_offset   = 0,
 		last_input_time = time.now(),
 		needs_search    = false,
 		status_message  = "Results will show up here...",
@@ -164,11 +166,19 @@ main :: proc() {
 						// Up arrow - move to higher index (scroll down in reverse display)
 						if state.selected_index < len(state.packages) - 1 {
 							state.selected_index += 1
+							// Update scroll offset to keep selected item in view
+							if state.selected_index >= state.scroll_offset + 10 {
+								state.scroll_offset = state.selected_index - 9
+							}
 						}
 					case 'B':
 						// Down arrow - move to lower index (scroll up in reverse display)
 						if state.selected_index > 0 {
 							state.selected_index -= 1
+							// Update scroll offset to keep selected item in view
+							if state.selected_index < state.scroll_offset {
+								state.scroll_offset = state.selected_index
+							}
 						}
 					}
 				}
@@ -191,16 +201,18 @@ draw :: proc(state: ^State) {
 	// Clear screen
 	fmt.print("\x1b[2J\x1b[H")
 
-	// Calculate how many results we can display (leave 4 lines for header/footer)
-	display_count := len(state.packages)
+	// Show only 10 results at a time, apply scroll offset
+	display_count := len(state.packages) - state.scroll_offset
 	if display_count > 10 {
 		display_count = 10
 	}
-
+	if display_count < 0 {
+		display_count = 0
+	}
 
 	for i := 0; i < display_count; i += 1 {
-		// Index 0 appears at bottom, index 18 appears at top
-		pkg_idx := display_count - 1 - i
+		// Index 0 appears at bottom, index 9 appears at top
+		pkg_idx := state.scroll_offset + display_count - 1 - i
 		pkg := state.packages[pkg_idx]
 
 		if pkg_idx == state.selected_index {
@@ -349,10 +361,12 @@ search :: proc(state: ^State) {
 	if len(state.packages) == 0 {
 		state.status_message = "No results found."
 		state.selected_index = 0
+		state.scroll_offset = 0
 	} else {
 		// Start selection at the bottom of visible results
 		// Best match (index 0) appears at bottom, so select it
 		state.selected_index = 0
+		state.scroll_offset = 0
 		state.status_message = fmt.tprintf(
 			"Found %d result%s.",
 			len(state.packages),
