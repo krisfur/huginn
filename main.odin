@@ -55,6 +55,7 @@ State :: struct {
 	selected_index:  int,
 	last_input_time: time.Time,
 	needs_search:    bool,
+	status_message:  string,
 }
 
 main :: proc() {
@@ -78,6 +79,7 @@ main :: proc() {
 		selected_index  = 0,
 		last_input_time = time.now(),
 		needs_search    = false,
+		status_message  = "Results will show up here...",
 	}
 	defer delete(state.packages)
 	defer {
@@ -111,6 +113,8 @@ main :: proc() {
 			if elapsed >= DEBOUNCE_DELAY {
 				search(&state)
 				state.needs_search = false
+			} else {
+				state.status_message = "Searching..."
 			}
 		}
 
@@ -157,14 +161,14 @@ main :: proc() {
 				if n == 2 && seq[0] == '[' {
 					switch seq[1] {
 					case 'A':
-						// Up arrow
-						if state.selected_index > 0 {
-							state.selected_index -= 1
-						}
-					case 'B':
-						// Down arrow
+						// Up arrow - move to higher index (scroll down in reverse display)
 						if state.selected_index < len(state.packages) - 1 {
 							state.selected_index += 1
+						}
+					case 'B':
+						// Down arrow - move to lower index (scroll up in reverse display)
+						if state.selected_index > 0 {
+							state.selected_index -= 1
 						}
 					}
 				}
@@ -193,12 +197,13 @@ draw :: proc(state: ^State) {
 		display_count = 19
 	}
 
-	// Draw results from top
-	for i in 0 ..< display_count {
-		pkg := state.packages[i]
 
-		if i == state.selected_index {
-			// Highlight selected with reverse video
+	for i := 0; i < display_count; i += 1 {
+		// Index 0 appears at bottom, index 18 appears at top
+		pkg_idx := display_count - 1 - i
+		pkg := state.packages[pkg_idx]
+
+		if pkg_idx == state.selected_index {
 			fmt.printf("\x1b[7m[%-6s] > %-24s %-11s\x1b[0m\n", pkg.source, pkg.name, pkg.version)
 			fmt.printf("\x1b[7m         %s\x1b[0m\n", truncate_string(pkg.description, 62))
 		} else {
@@ -207,16 +212,13 @@ draw :: proc(state: ^State) {
 		}
 	}
 
+	// Draw status message line
+	fmt.printf("%s\n", state.status_message)
+
 	// Draw separator
 	fmt.print(
 		"──────────────────────────────────────────────────────────────────\n",
 	)
-
-	// Draw status line
-	more := ""
-	if len(state.packages) > 19 {
-		more = " (more results available)"
-	}
 
 	// Show searching indicator if debouncing
 	status := "ready"
@@ -228,9 +230,8 @@ draw :: proc(state: ^State) {
 	}
 
 	fmt.printf(
-		"Results: %d%s  [%s]  |  ↑↓ navigate  |  Enter install  |  q quit\n",
+		"Results: %d  [%s]  |  ↑↓ navigate  |  Enter install  |  q quit\n",
 		len(state.packages),
-		more,
 		status,
 	)
 
@@ -251,17 +252,20 @@ search :: proc(state: ^State) {
 
 	query_str := string(cstring(raw_data(state.search_query[:])))
 	if len(query_str) == 0 {
+		state.status_message = "Results will show up here.."
+		state.selected_index = 0
 		return
 	}
 
 	// Run paru search with output limit for speed
-	cmd := fmt.tprintf("paru -Ss '%s' 2>/dev/null", query_str)
+	cmd := fmt.tprintf("paru -Ss '%s' 2>&1", query_str)
 	cmd_cstr := strings.clone_to_cstring(cmd)
 	defer delete(cmd_cstr)
 
 	// Use popen to read command output
 	file := popen(cmd_cstr, "r")
 	if file == nil {
+		state.status_message = "error running paru"
 		return
 	}
 	defer pclose(file)
@@ -284,11 +288,22 @@ search :: proc(state: ^State) {
 	}
 
 	if total_read == 0 {
+		state.status_message = "No results found."
+		state.selected_index = 0
 		return
 	}
 
 	// Parse output
 	output_str := string(buf[:total_read])
+
+	// Check for paru error messages
+	if strings.contains(output_str, "Query arg too small") ||
+	   strings.contains(output_str, "Too many package results") {
+		state.status_message = "Too many results! Try a more specific search."
+		state.selected_index = 0
+		return
+	}
+
 	lines := strings.split(output_str, "\n")
 	defer delete(lines)
 
@@ -337,6 +352,21 @@ search :: proc(state: ^State) {
 			description = strings.clone(description),
 		}
 		append(&state.packages, pkg)
+	}
+
+	// Set status message and selection
+	if len(state.packages) == 0 {
+		state.status_message = "No results found."
+		state.selected_index = 0
+	} else {
+		// Start selection at the bottom of visible results
+		// Best match (index 0) appears at bottom, so select it
+		state.selected_index = 0
+		state.status_message = fmt.tprintf(
+			"found %d result%s",
+			len(state.packages),
+			len(state.packages) == 1 ? "" : "s",
+		)
 	}
 }
 
