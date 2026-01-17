@@ -220,19 +220,10 @@ draw :: proc(state: ^State) {
 		"──────────────────────────────────────────────────────────────────\n",
 	)
 
-	// Show searching indicator if debouncing
-	status := "ready"
-	if state.needs_search {
-		elapsed := time.since(state.last_input_time)
-		if elapsed < DEBOUNCE_DELAY {
-			status = "searching..."
-		}
-	}
 
 	fmt.printf(
-		"Results: %d  [%s]  |  ↑↓ navigate  |  Enter install  |  q quit\n",
+		"Results: %d  |  ↑↓: navigate  |  Enter: install  |  Q: quit\n",
 		len(state.packages),
-		status,
 	)
 
 	// Draw search box at bottom (always visible)
@@ -252,7 +243,7 @@ search :: proc(state: ^State) {
 
 	query_str := string(cstring(raw_data(state.search_query[:])))
 	if len(query_str) == 0 {
-		state.status_message = "Results will show up here.."
+		state.status_message = "Results will show up here..."
 		state.selected_index = 0
 		return
 	}
@@ -265,7 +256,7 @@ search :: proc(state: ^State) {
 	// Use popen to read command output
 	file := popen(cmd_cstr, "r")
 	if file == nil {
-		state.status_message = "error running paru"
+		state.status_message = "Error running paru!"
 		return
 	}
 	defer pclose(file)
@@ -363,7 +354,7 @@ search :: proc(state: ^State) {
 		// Best match (index 0) appears at bottom, so select it
 		state.selected_index = 0
 		state.status_message = fmt.tprintf(
-			"found %d result%s",
+			"Found %d result%s.",
 			len(state.packages),
 			len(state.packages) == 1 ? "" : "s",
 		)
