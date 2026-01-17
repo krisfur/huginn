@@ -193,8 +193,8 @@ draw :: proc(state: ^State) {
 
 	// Calculate how many results we can display (leave 4 lines for header/footer)
 	display_count := len(state.packages)
-	if display_count > 19 {
-		display_count = 19
+	if display_count > 10 {
+		display_count = 10
 	}
 
 
