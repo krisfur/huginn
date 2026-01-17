@@ -4,7 +4,7 @@ A simple TUI Arch User Repository (AUR) interactive search tool built in `Odin` 
 
 ![screenshot](./screenshot.png)
 
-> requires paru to run [link](https://github.com/Morganamilo/paru)
+> ⚠️ requires paru to run [link](https://github.com/Morganamilo/paru)
 
 # Installation
 
@@ -26,11 +26,13 @@ then you can simply run the resulting executable
 ./huginn
 ```
 
-to add it to make it callable from anywhere simple copy it to your local bin folder like:
+to make it callable from anywhere simply copy it to your local bin folder like:
 
 ```bash
 sudo cp huginn /usr/local/bin/huginn
 ```
+
+or manually add it to path.
 
 ## tl;dr give me the full commands (from source)
 
