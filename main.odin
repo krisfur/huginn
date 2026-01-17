@@ -81,7 +81,7 @@ main :: proc() {
 		scroll_offset   = 0,
 		last_input_time = time.now(),
 		needs_search    = false,
-		status_message  = "Results will show up here...",
+		status_message  = "Start typing to search.",
 	}
 	defer delete(state.packages)
 	defer {
@@ -255,7 +255,7 @@ search :: proc(state: ^State) {
 
 	query_str := string(cstring(raw_data(state.search_query[:])))
 	if len(query_str) == 0 {
-		state.status_message = "Results will show up here..."
+		state.status_message = "Start typing to search."
 		state.selected_index = 0
 		return
 	}
