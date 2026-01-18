@@ -92,7 +92,7 @@ main :: proc() {
 		scroll_offset   = 0,
 		last_input_time = time.now(),
 		needs_search    = false,
-		status_message  = "Start typing to search.",
+		status_message  = fmt.aprintf("Start typing to search."),
 	}
 	defer delete(state.packages)
 	defer {
@@ -102,8 +102,8 @@ main :: proc() {
 			delete(pkg.version)
 			delete(pkg.description)
 		}
-		delete(state.status_message)
 	}
+	defer delete(state.status_message)
 
 	// Enable raw mode
 	raw_termios := original_termios
@@ -128,7 +128,8 @@ main :: proc() {
 				search(&state)
 				state.needs_search = false
 			} else {
-				state.status_message = "Searching..."
+				delete(state.status_message)
+				state.status_message = fmt.aprintf("Searching...")
 			}
 		}
 
@@ -308,7 +309,8 @@ search :: proc(state: ^State) {
 
 	query_str := string(state.search_query[:state.search_len])
 	if len(query_str) == 0 {
-		state.status_message = "Start typing to search."
+		delete(state.status_message)
+		state.status_message = fmt.aprintf("Start typing to search.")
 		state.selected_index = 0
 		return
 	}
@@ -323,7 +325,8 @@ search :: proc(state: ^State) {
 	defer delete(stderr)
 
 	if err != nil {
-		state.status_message = "Error running paru!"
+		delete(state.status_message)
+		state.status_message = fmt.aprintf("Error running paru!")
 		return
 	}
 
@@ -334,13 +337,15 @@ search :: proc(state: ^State) {
 	// Check for paru error messages in stderr first (has priority)
 	if strings.contains(stderr_str, "Query arg too small") ||
 	   strings.contains(stderr_str, "Too many package results") {
-		state.status_message = "Too many results! Try a more specific search."
+		delete(state.status_message)
+		state.status_message = fmt.aprintf("Too many results! Try a more specific search.")
 		state.selected_index = 0
 		return
 	}
 
 	if len(stdout) == 0 {
-		state.status_message = "No results found."
+		delete(state.status_message)
+		state.status_message = fmt.aprintf("No results found.")
 		state.selected_index = 0
 		return
 	}
@@ -348,7 +353,8 @@ search :: proc(state: ^State) {
 	// Check for paru error messages in stdout
 	if strings.contains(output_str, "Query arg too small") ||
 	   strings.contains(output_str, "Too many package results") {
-		state.status_message = "Too many results! Try a more specific search."
+		delete(state.status_message)
+		state.status_message = fmt.aprintf("Too many results! Try a more specific search.")
 		state.selected_index = 0
 		return
 	}
@@ -405,7 +411,8 @@ search :: proc(state: ^State) {
 
 	// Set status message and selection
 	if len(state.packages) == 0 {
-		state.status_message = "No results found."
+		delete(state.status_message)
+		state.status_message = fmt.aprintf("No results found.")
 		state.selected_index = 0
 		state.scroll_offset = 0
 	} else {
@@ -413,6 +420,7 @@ search :: proc(state: ^State) {
 		// Best match (index 0) appears at bottom, so select it
 		state.selected_index = 0
 		state.scroll_offset = 0
+		delete(state.status_message)
 		state.status_message = fmt.aprintf(
 			"Found %d result%s.",
 			len(state.packages),
