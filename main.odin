@@ -3,6 +3,7 @@ package huginn
 import "core:c"
 import "core:c/libc"
 import "core:fmt"
+import "core:os/os2"
 import "core:strings"
 import "core:sys/posix"
 import "core:time"
@@ -38,8 +39,10 @@ State :: struct {
 
 main :: proc() {
 	// Check if paru is available
-	ret := libc.system("which paru > /dev/null 2>&1")
-	if ret != 0 {
+	_, stdout, stderr, err := os2.process_exec({command = {"which", "paru"}}, context.allocator)
+	defer delete(stdout)
+	defer delete(stderr)
+	if err != nil {
 		fmt.println("Error: paru is not installed. Please install paru first.")
 		return
 	}
@@ -237,46 +240,39 @@ search :: proc(state: ^State) {
 		return
 	}
 
-	// Run paru search with output limit for speed
-	cmd := fmt.tprintf("paru -Ss '%s' 2>&1", query_str)
-	cmd_cstr := strings.clone_to_cstring(cmd)
-	defer delete(cmd_cstr)
+	// Run paru search with shell to ensure proper environment
+	search_cmd := fmt.tprintf("paru -Ss '%s'", query_str)
+	_, stdout, stderr, err := os2.process_exec(
+		{command = {"sh", "-c", search_cmd}},
+		context.allocator,
+	)
+	defer delete(stdout)
+	defer delete(stderr)
 
-	// Use popen to read command output
-	file := posix.popen(cmd_cstr, "r")
-	if file == nil {
+	if err != nil {
 		state.status_message = "Error running paru!"
 		return
 	}
-	defer posix.pclose(file)
 
-	// Read output into fixed buffer (faster than dynamic allocation)
-	buf: [16384]u8
-	total_read := 0
+	// Parse output
+	output_str := string(stdout)
+	stderr_str := string(stderr)
 
-	fd := posix.fileno(file)
-	for {
-		remaining := c.size_t(len(buf) - total_read)
-		n := posix.read(fd, raw_data(buf[total_read:]), remaining)
-		if n <= 0 {
-			break
-		}
-		total_read += int(n)
-		if total_read >= len(buf) - 1 {
-			break
-		}
+	// Check for paru error messages in stderr first (has priority)
+	if strings.contains(stderr_str, "Query arg too small") ||
+	   strings.contains(stderr_str, "Too many package results") {
+		state.status_message = "Too many results! Try a more specific search."
+		state.selected_index = 0
+		return
 	}
 
-	if total_read == 0 {
+	if len(stdout) == 0 {
 		state.status_message = "No results found."
 		state.selected_index = 0
 		return
 	}
 
-	// Parse output
-	output_str := string(buf[:total_read])
-
-	// Check for paru error messages
+	// Check for paru error messages in stdout
 	if strings.contains(output_str, "Query arg too small") ||
 	   strings.contains(output_str, "Too many package results") {
 		state.status_message = "Too many results! Try a more specific search."
