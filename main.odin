@@ -239,7 +239,7 @@ draw :: proc(state: ^State) {
 	)
 
 	// Draw search box at bottom (always visible)
-	query_str := string(cstring(raw_data(state.search_query[:])))
+	query_str := string(state.search_query[:state.search_len])
 	fmt.printf("Search: %s", query_str)
 }
 
@@ -253,7 +253,7 @@ search :: proc(state: ^State) {
 	}
 	clear(&state.packages)
 
-	query_str := string(cstring(raw_data(state.search_query[:])))
+	query_str := string(state.search_query[:state.search_len])
 	if len(query_str) == 0 {
 		state.status_message = "Start typing to search."
 		state.selected_index = 0
