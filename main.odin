@@ -1,45 +1,22 @@
 package huginn
 
 import "core:c"
+import "core:c/libc"
 import "core:fmt"
 import "core:strings"
+import "core:sys/posix"
 import "core:time"
 
-// Terminal control via libc
-foreign import libc "system:c"
-
-@(default_calling_convention = "c")
-foreign libc {
-	tcgetattr :: proc(fd: i32, termios: rawptr) -> i32 ---
-	tcsetattr :: proc(fd: i32, optional_actions: i32, termios: rawptr) -> i32 ---
-	fileno :: proc(stream: rawptr) -> i32 ---
-	system :: proc(cmd: cstring) -> i32 ---
-	popen :: proc(cmd: cstring, mode: cstring) -> rawptr ---
-	pclose :: proc(stream: rawptr) -> i32 ---
-	read :: proc(fd: i32, buf: rawptr, count: c.size_t) -> c.ssize_t ---
-}
+// Type alias for termios flags
+tcflag_t :: posix.tcflag_t
 
 // Terminal constants
 STDIN_FD :: 0
-TCSANOW :: 0
-ICANON :: u32(0x0000002)
-ECHO :: u32(0x0000008)
-VMIN :: 6
-VTIME :: 5
 
 // Debounce delay in milliseconds
 DEBOUNCE_DELAY :: time.Millisecond * 500
 
-Termios :: struct {
-	c_iflag:  u32,
-	c_oflag:  u32,
-	c_cflag:  u32,
-	c_lflag:  u32,
-	c_line:   u8,
-	c_cc:     [32]u8,
-	c_ispeed: u32,
-	c_ospeed: u32,
-}
+Termios :: posix.termios
 
 Package :: struct {
 	source:      string,
@@ -61,7 +38,7 @@ State :: struct {
 
 main :: proc() {
 	// Check if paru is available
-	ret := system("which paru > /dev/null 2>&1")
+	ret := libc.system("which paru > /dev/null 2>&1")
 	if ret != 0 {
 		fmt.println("Error: paru is not installed. Please install paru first.")
 		return
@@ -69,8 +46,8 @@ main :: proc() {
 
 	// Setup terminal first (before state)
 	original_termios: Termios
-	tcgetattr(STDIN_FD, rawptr(&original_termios))
-	defer tcsetattr(STDIN_FD, TCSANOW, rawptr(&original_termios))
+	posix.tcgetattr(STDIN_FD, &original_termios)
+	defer posix.tcsetattr(STDIN_FD, posix.TC_Optional_Action.TCSANOW, &original_termios)
 
 	// Initialize state
 	state := State {
@@ -95,11 +72,11 @@ main :: proc() {
 
 	// Enable raw mode
 	raw_termios := original_termios
-	raw_termios.c_lflag &= ~ICANON
-	raw_termios.c_lflag &= ~ECHO
-	raw_termios.c_cc[VMIN] = 0
-	raw_termios.c_cc[VTIME] = 1
-	tcsetattr(STDIN_FD, TCSANOW, rawptr(&raw_termios))
+	raw_termios.c_lflag &= ~posix.CLocal_Flags{posix.CLocal_Flag_Bits.ICANON}
+	raw_termios.c_lflag &= ~posix.CLocal_Flags{posix.CLocal_Flag_Bits.ECHO}
+	raw_termios.c_cc[posix.Control_Char.VMIN] = 0
+	raw_termios.c_cc[posix.Control_Char.VTIME] = 1
+	posix.tcsetattr(STDIN_FD, posix.TC_Optional_Action.TCSANOW, &raw_termios)
 
 	// Hide cursor
 	fmt.print("\x1b[?25l")
@@ -122,7 +99,7 @@ main :: proc() {
 
 		// Read input (non-blocking)
 		buf: [1]u8
-		bytes_read := read(STDIN_FD, raw_data(buf[:]), 1)
+		bytes_read := posix.read(STDIN_FD, raw_data(buf[:]), 1)
 
 		if bytes_read > 0 {
 			key := buf[0]
@@ -137,12 +114,12 @@ main :: proc() {
 				if state.selected_index >= 0 && state.selected_index < len(state.packages) {
 					pkg := state.packages[state.selected_index]
 					// Restore terminal to normal mode before running paru
-					tcsetattr(STDIN_FD, TCSANOW, rawptr(&original_termios))
+					posix.tcsetattr(STDIN_FD, posix.TC_Optional_Action.TCSANOW, &original_termios)
 					fmt.print("\x1b[2J\x1b[H")
 					fmt.print("\x1b[?25h")
 					fmt.printf("Installing %s from %s...\n", pkg.name, pkg.source)
 					cmd := fmt.tprintf("paru -S %s", pkg.name)
-					system(strings.clone_to_cstring(cmd, context.temp_allocator))
+					libc.system(strings.clone_to_cstring(cmd, context.temp_allocator))
 				}
 				return
 
@@ -159,7 +136,7 @@ main :: proc() {
 			case 27:
 				// Escape sequence (arrow keys)
 				seq: [2]u8
-				n := read(STDIN_FD, raw_data(seq[:]), 2)
+				n := posix.read(STDIN_FD, raw_data(seq[:]), 2)
 				if n == 2 && seq[0] == '[' {
 					switch seq[1] {
 					case 'A':
@@ -233,7 +210,6 @@ draw :: proc(state: ^State) {
 		"──────────────────────────────────────────────────────────────────\n",
 	)
 
-
 	fmt.printf(
 		"Results: %d  |  ↑↓: navigate  |  Enter: install  |  Q: quit\n",
 		len(state.packages),
@@ -267,21 +243,21 @@ search :: proc(state: ^State) {
 	defer delete(cmd_cstr)
 
 	// Use popen to read command output
-	file := popen(cmd_cstr, "r")
+	file := posix.popen(cmd_cstr, "r")
 	if file == nil {
 		state.status_message = "Error running paru!"
 		return
 	}
-	defer pclose(file)
+	defer posix.pclose(file)
 
 	// Read output into fixed buffer (faster than dynamic allocation)
 	buf: [16384]u8
 	total_read := 0
 
-	fd := fileno(file)
+	fd := posix.fileno(file)
 	for {
 		remaining := c.size_t(len(buf) - total_read)
-		n := read(fd, raw_data(buf[total_read:]), remaining)
+		n := posix.read(fd, raw_data(buf[total_read:]), remaining)
 		if n <= 0 {
 			break
 		}
