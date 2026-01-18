@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:os/os2"
 import "core:strings"
 import "core:sys/posix"
+import "core:terminal/ansi"
 import "core:time"
 
 // Type alias for termios flags
@@ -24,6 +25,36 @@ Package :: struct {
 	name:        string,
 	version:     string,
 	description: string,
+}
+
+// ANSI color codes for different repository sources
+get_source_color :: proc(source: string) -> string {
+	switch source {
+	case "core":
+		return ansi.CSI + ansi.FG_CYAN + ansi.SGR
+	case "extra":
+		return ansi.CSI + ansi.FG_BRIGHT_GREEN + ansi.SGR
+	case "community":
+		return ansi.CSI + ansi.FG_BRIGHT_YELLOW + ansi.SGR
+	case "aur":
+		return ansi.CSI + ansi.FG_BRIGHT_BLUE + ansi.SGR
+	case:
+		return ansi.CSI + ansi.FG_MAGENTA + ansi.SGR
+	}
+}
+
+// Color codes for status messages
+get_status_color :: proc(status: string) -> string {
+	if strings.contains(status, "Found") {
+		return ansi.CSI + ansi.FG_GREEN + ansi.SGR
+	} else if strings.contains(status, "Searching") {
+		return ansi.CSI + ansi.FG_BRIGHT_YELLOW + ansi.SGR
+	} else if strings.contains(status, "Error") || strings.contains(status, "Too many") {
+		return ansi.CSI + ansi.FG_RED + ansi.SGR
+	} else if strings.contains(status, "Start typing") {
+		return ansi.CSI + ansi.FG_BRIGHT_BLACK + ansi.SGR
+	}
+	return ""
 }
 
 State :: struct {
@@ -71,6 +102,7 @@ main :: proc() {
 			delete(pkg.version)
 			delete(pkg.description)
 		}
+		delete(state.status_message)
 	}
 
 	// Enable raw mode
@@ -82,8 +114,8 @@ main :: proc() {
 	posix.tcsetattr(STDIN_FD, posix.TC_Optional_Action.TCSANOW, &raw_termios)
 
 	// Hide cursor
-	fmt.print("\x1b[?25l")
-	defer fmt.print("\x1b[?25h")
+	fmt.print(ansi.CSI + ansi.DECTCEM_HIDE)
+	defer fmt.print(ansi.CSI + ansi.DECTCEM_SHOW)
 
 	// Main loop
 	for {
@@ -109,7 +141,9 @@ main :: proc() {
 
 			switch key {
 			case 'q', 'Q':
-				fmt.print("\x1b[2J\x1b[H")
+				fmt.print(ansi.CSI + ansi.CUP)
+				fmt.print(ansi.CSI + ansi.ED)
+				fmt.print(ansi.CSI + ansi.DECTCEM_SHOW)
 				return
 
 			case '\n':
@@ -118,8 +152,9 @@ main :: proc() {
 					pkg := state.packages[state.selected_index]
 					// Restore terminal to normal mode before running paru
 					posix.tcsetattr(STDIN_FD, posix.TC_Optional_Action.TCSANOW, &original_termios)
-					fmt.print("\x1b[2J\x1b[H")
-					fmt.print("\x1b[?25h")
+					fmt.print(ansi.CSI + ansi.CUP)
+					fmt.print(ansi.CSI + ansi.ED)
+					fmt.print(ansi.CSI + ansi.DECTCEM_SHOW)
 					fmt.printf("Installing %s from %s...\n", pkg.name, pkg.source)
 					cmd := fmt.tprintf("paru -S %s", pkg.name)
 					libc.system(strings.clone_to_cstring(cmd, context.temp_allocator))
@@ -180,7 +215,8 @@ main :: proc() {
 
 draw :: proc(state: ^State) {
 	// Clear screen
-	fmt.print("\x1b[2J\x1b[H")
+	fmt.print(ansi.CSI + ansi.ED)
+	fmt.print(ansi.CSI + ansi.CUP)
 
 	// Show only 10 results at a time, apply scroll offset
 	display_count := len(state.packages) - state.scroll_offset
@@ -196,22 +232,59 @@ draw :: proc(state: ^State) {
 		pkg_idx := state.scroll_offset + display_count - 1 - i
 		pkg := state.packages[pkg_idx]
 
+		source_color := get_source_color(pkg.source)
+		reset := ansi.CSI + ansi.RESET + ansi.SGR
+
 		if pkg_idx == state.selected_index {
-			fmt.printf("\x1b[7m[%-6s] > %-24s %-11s\x1b[0m\n", pkg.source, pkg.name, pkg.version)
-			fmt.printf("\x1b[7m         %s\x1b[0m\n", truncate_string(pkg.description, 62))
+			fmt.printf(
+				"%s%s[%-6s]%s > %s%s%-24s%s %-11s%s\n",
+				ansi.CSI + ansi.INVERT + ansi.SGR,
+				source_color,
+				pkg.source,
+				ansi.CSI + ansi.INVERT + ansi.SGR,
+				ansi.CSI + ansi.BOLD + ansi.SGR,
+				ansi.CSI + ansi.FG_DEFAULT + ansi.SGR,
+				pkg.name,
+				reset,
+				pkg.version,
+				ansi.CSI + ansi.EL,
+			)
+			fmt.printf(
+				"%s         %s%s%s\n",
+				ansi.CSI + ansi.INVERT + ansi.SGR,
+				truncate_string(pkg.description, 62),
+				reset,
+				ansi.CSI + ansi.EL,
+			)
 		} else {
-			fmt.printf("[%-6s]   %-24s %-11s\n", pkg.source, pkg.name, pkg.version)
-			fmt.printf("         %s\n", truncate_string(pkg.description, 62))
+			fmt.printf(
+				"%s[%-6s]%s   %s%-24s%s %-11s%s\n",
+				source_color,
+				pkg.source,
+				reset,
+				ansi.CSI + ansi.BOLD + ansi.SGR,
+				pkg.name,
+				reset,
+				pkg.version,
+				ansi.CSI + ansi.EL,
+			)
+			fmt.printf("         %s%s\n", truncate_string(pkg.description, 62), ansi.CSI + ansi.EL)
 		}
 	}
 
-	// Draw status message line
-	fmt.printf("%s\n", state.status_message)
+	// Draw status message line with proper clearing
+	fmt.print(ansi.CSI + ansi.EL)
+	status_color := get_status_color(state.status_message)
+	reset := ansi.CSI + ansi.RESET + ansi.SGR
+	fmt.printf("%s%s%s\n", status_color, state.status_message, reset)
+	fmt.print(ansi.CSI + ansi.EL)
 
-	// Draw separator
+	// Draw separator with proper clearing
 	fmt.print(
-		"──────────────────────────────────────────────────────────────────\n",
+		"──────────────────────────────────────────────────────────────────",
 	)
+	fmt.print(ansi.CSI + ansi.EL)
+	fmt.println()
 
 	fmt.printf(
 		"Results: %d  |  ↑↓: navigate  |  Enter: install  |  Q: quit\n",
@@ -340,7 +413,7 @@ search :: proc(state: ^State) {
 		// Best match (index 0) appears at bottom, so select it
 		state.selected_index = 0
 		state.scroll_offset = 0
-		state.status_message = fmt.tprintf(
+		state.status_message = fmt.aprintf(
 			"Found %d result%s.",
 			len(state.packages),
 			len(state.packages) == 1 ? "" : "s",
