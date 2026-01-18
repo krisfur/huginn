@@ -117,6 +117,11 @@ main :: proc() {
 	fmt.print(ansi.CSI + ansi.DECTCEM_HIDE)
 	defer fmt.print(ansi.CSI + ansi.DECTCEM_SHOW)
 
+	// Scroll down to preserve existing terminal content
+	for _ in 0 ..< 12 {
+		fmt.println()
+	}
+
 	// Main loop
 	for {
 		draw(&state)
@@ -288,8 +293,9 @@ draw :: proc(state: ^State) {
 	fmt.println()
 
 	fmt.printf(
-		"Results: %d  |  ↑↓: navigate  |  Enter: install  |  Q: quit\n",
+		"Results: %d  |  ↑↓: navigate  |  Enter: install  |  Q: quit%s\n",
 		len(state.packages),
+		ansi.CSI + ansi.EL,
 	)
 
 	// Draw search box at bottom (always visible)
