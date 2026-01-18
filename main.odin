@@ -117,10 +117,8 @@ main :: proc() {
 	fmt.print(ansi.CSI + ansi.DECTCEM_HIDE)
 	defer fmt.print(ansi.CSI + ansi.DECTCEM_SHOW)
 
-	// Scroll down to preserve existing terminal content
-	for _ in 0 ..< 12 {
-		fmt.println()
-	}
+	// Clear screen on startup to remove fastfetch and any previous content
+	libc.system("clear")
 
 	// Main loop
 	for {
@@ -220,7 +218,7 @@ main :: proc() {
 }
 
 draw :: proc(state: ^State) {
-	// Clear screen
+	// Clear screen using ANSI codes
 	fmt.print(ansi.CSI + ansi.ED)
 	fmt.print(ansi.CSI + ansi.CUP)
 
