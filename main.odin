@@ -142,7 +142,7 @@ main :: proc() {
 					fmt.print("\x1b[?25h")
 					fmt.printf("Installing %s from %s...\n", pkg.name, pkg.source)
 					cmd := fmt.tprintf("paru -S %s", pkg.name)
-					system(strings.clone_to_cstring(cmd))
+					system(strings.clone_to_cstring(cmd, context.temp_allocator))
 				}
 				return
 
@@ -193,6 +193,7 @@ main :: proc() {
 					state.needs_search = true
 				}
 			}
+			free_all(context.temp_allocator)
 		}
 	}
 }
