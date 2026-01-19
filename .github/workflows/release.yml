@@ -1,0 +1,56 @@
+name: Release Linux Build
+
+on:
+  push:
+    tags:
+      - "v*" # Triggers only on tags like v1.0, v2.3.4, etc.
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Linux
+    # Use Ubuntu 20.04 for better backward compatibility (glibc)
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Installs the Odin compiler
+      - name: Setup Odin
+        uses: laytan/setup-odin@v1
+        with:
+          # You can specify a version or use 'dev' for latest
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Application
+        run: |
+          # Replace 'src' with your entry folder/file and 'my_app' with your binary name
+          odin build . -out:huginn -o:speed
+          chmod +x huginn
+
+      - name: Package Release
+        run: |
+          # Create a directory structure for the tarball
+          # We use environment variables to make the version dynamic
+          DIR_NAME="huginn-${{ github.ref_name }}-linux_x86_64"
+          mkdir $DIR_NAME
+
+          # Move binary and standard files into the folder
+          mv huginn $DIR_NAME/
+          # Copy Readme/License if they exist (ignoring errors with || true)
+          cp readme.MD LICENSE $DIR_NAME/ || true
+
+          # Create the tarball
+          tar -czvf "$DIR_NAME.tar.gz" $DIR_NAME
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            *.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
