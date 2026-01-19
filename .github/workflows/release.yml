@@ -11,8 +11,8 @@ permissions:
 jobs:
   build-and-release:
     name: Build Linux
-    # Use Ubuntu 20.04 for better backward compatibility (glibc)
-    runs-on: ubuntu-20.04
+    # Use Ubuntu 24.04 for better backward compatibility (glibc)
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout Code
