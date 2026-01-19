@@ -8,6 +8,24 @@ A simple TUI Arch User Repository (AUR) interactive search tool built in `Odin` 
 
 # Installation
 
+## Tarball
+
+On x86_64 just grab the tarball:
+
+```bash
+curl -L -O https://github.com/krisfur/huginn/releases/download/v1.0.2/huginn-v1.0.2-linux_x86_64.tar.gz
+tar -xzf huginn-v1.0.2-linux_x86_64.tar.gz
+sudo cp huginn-v1.0.2-linux_x86_64/huginn /usr/local/bin/huginn
+```
+
+You still need `Paru` [link](https://github.com/Morganamilo/paru) installed to use it. If missing use:
+
+```bash
+git clone https://aur.archlinux.org/paru.git
+cd paru
+makepkg -si
+```
+
 ## From source
 
 Prerequisites: 
