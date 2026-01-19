@@ -144,7 +144,7 @@ main :: proc() {
 			key := buf[0]
 
 			switch key {
-			case 'q', 'Q':
+			case '\x18': // Ctrl+X
 				fmt.print(ansi.CSI + ansi.CUP)
 				fmt.print(ansi.CSI + ansi.ED)
 				fmt.print(ansi.CSI + ansi.DECTCEM_SHOW)
@@ -291,7 +291,7 @@ draw :: proc(state: ^State) {
 	fmt.println()
 
 	fmt.printf(
-		"Results: %d  |  ↑↓: navigate  |  Enter: install  |  Q: quit%s\n",
+		"Results: %d  |  ↑↓: navigate  |  Enter: install  |  Ctrl+X: quit%s\n",
 		len(state.packages),
 		ansi.CSI + ansi.EL,
 	)
